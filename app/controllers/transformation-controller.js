@@ -57,13 +57,13 @@ function getSurveyParts(req, res, next) {
                     })
                     .catch(next);
             } else {
-                _authenticate(survey)
+                _authenticate(survey, req.originalUrl, req.headers.referer)
                     .then(_getFormFromCache)
                     .then((result) => {
                         if (result) {
-                            return _updateCache(result);
+                            return _updateCache(result, req.originalUrl, req.headers.referer);
                         }
-                        return _updateCache(survey);
+                        return _updateCache(survey, req.originalUrl, req.headers.referer);
                     })
                     .then((result) => {
                         _respond(res, result);
@@ -84,7 +84,7 @@ function getSurveyParts(req, res, next) {
 function getSurveyHash(req, res, next) {
     _getSurveyParams(req)
         .then((survey) => cacheModel.getHashes(survey))
-        .then(_updateCache)
+        .then(res => _updateCache(res, req.originalUrl, req.headers.referer))
         .then((survey) => {
             if (Object.prototype.hasOwnProperty.call(survey, 'credentials')) {
                 delete survey.credentials;
@@ -115,8 +115,8 @@ function _getFormDirectly(survey) {
  *
  * @return { Promise<module:survey-model~SurveyObject> } a Promise resolving with survey object
  */
-function _authenticate(survey) {
-    return communicator.authenticate(survey);
+function _authenticate(survey, requestUrl, referer) {
+    return communicator.authenticate(survey, requestUrl, referer);
 }
 
 /**
@@ -135,9 +135,9 @@ function _getFormFromCache(survey) {
  *
  * @return { Promise<module:survey-model~SurveyObject> } a Promise resolving with survey object
  */
-function _updateCache(survey) {
+function _updateCache(survey, requestUrl, referer) {
     return communicator
-        .getXFormInfo(survey)
+        .getXFormInfo(survey, requestUrl, referer)
         .then(communicator.getManifest)
         .then((survey) => Promise.all([survey, cacheModel.check(survey)]))
         .then(([survey, upToDate]) => {

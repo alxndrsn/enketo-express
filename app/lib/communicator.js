@@ -22,7 +22,7 @@ const TIMEOUT = config.timeout;
  * @param { module:survey-model~SurveyObject } survey - survey object
  * @return { Promise<module:survey-model~SurveyObject> } a Promise that resolves with a survey object with added info
  */
-function getXFormInfo(survey) {
+function getXFormInfo(survey, requestUrl, referer) {
     if (!survey || !survey.openRosaServer) {
         throw new Error('No server provided.');
     }
@@ -36,6 +36,9 @@ function getXFormInfo(survey) {
         auth: survey.credentials,
         headers: {
             cookie: survey.cookie,
+            'X-Enketo-Debug': new Error().stack.split('\n').slice(1).map((line, idx) => idx ? line : line.substring(7)),
+            'X-Enketo-Request-Url': requestUrl,
+            'X-Enketo-Referrer-Url': referer,
         },
     }).then((formListXml) => _findFormAddInfo(formListXml, survey));
 }
@@ -64,6 +67,7 @@ function getXForm(survey) {
         auth: survey.credentials,
         headers: {
             cookie: survey.cookie,
+            'X-Enketo-Debug': new Error().stack.split('\n').slice(1).map((line, idx) => idx ? line : line.substring(7)),
         },
     }).then((xform) => {
         survey.xform = xform;
@@ -91,6 +95,7 @@ function getManifest(survey) {
         auth: survey.credentials,
         headers: {
             cookie: survey.cookie,
+            'X-Enketo-Debug': new Error().stack.split('\n').slice(1).map((line, idx) => idx ? line : line.substring(7)),
         },
     })
         .then(_xmlToJson)
@@ -124,6 +129,7 @@ function getMaxSize(survey) {
         auth: survey.credentials,
         headers: {
             cookie: survey.cookie,
+            'X-Enketo-Debug': new Error().stack.split('\n').slice(1).map((line, idx) => idx ? line : line.substring(7)),
         },
         method: 'head',
     };
@@ -138,7 +144,7 @@ function getMaxSize(survey) {
  * @param { module:survey-model~SurveyObject } survey - survey object
  * @return { Promise<module:survey-model~SurveyObject> } a promise that resolves with a survey object
  */
-function authenticate(survey) {
+function authenticate(survey, requestUrl, referer) {
     const options = {
         url: getFormListUrl(
             survey.openRosaServer,
@@ -148,6 +154,9 @@ function authenticate(survey) {
         auth: survey.credentials,
         headers: {
             cookie: survey.cookie,
+            'X-Enketo-Debug': new Error().stack.split('\n').slice(1).map((line, idx) => idx ? line : line.substring(7)),
+            'X-Enketo-Request-Url': requestUrl,
+            'X-Enketo-Referrer-Url': referer,
         },
         // Formhub has a bug and cannot use the correct HEAD method.
         method: config['linked form and data server']['legacy formhub']
@@ -177,6 +186,7 @@ function getAuthHeader(url, credentials) {
         headers: {
             'X-OpenRosa-Version': '1.0',
             Date: new Date().toUTCString(),
+            'X-Enketo-Debug': new Error().stack.split('\n').slice(1).map((line, idx) => idx ? line : line.substring(7)),
         },
         timeout: TIMEOUT,
     };
