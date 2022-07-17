@@ -57,13 +57,13 @@ function getSurveyParts(req, res, next) {
                     })
                     .catch(next);
             } else {
-                _authenticate(survey)
+                _authenticate(survey, req.originalUrl, req.headers.referer)
                     .then(_getFormFromCache)
                     .then((result) => {
                         if (result) {
-                            return _updateCache(result);
+                            return _updateCache(result, req.originalUrl, req.headers.referer);
                         }
-                        return _updateCache(survey);
+                        return _updateCache(survey, req.originalUrl, req.headers.referer);
                     })
                     .then((result) => {
                         _respond(res, result);
@@ -84,7 +84,8 @@ function getSurveyParts(req, res, next) {
 function getSurveyHash(req, res, next) {
     _getSurveyParams(req)
         .then((survey) => cacheModel.getHashes(survey))
-        .then(_updateCache)
+        .then(res => _updateCache(res, req.originalUrl, req.headers.referer))
+        //.then(_updateCache)
         .then((survey) => {
             if (Object.prototype.hasOwnProperty.call(survey, 'credentials')) {
                 delete survey.credentials;
@@ -104,6 +105,7 @@ function getSurveyHash(req, res, next) {
  *
  */
 function _getFormDirectly(survey) {
+    console.log('TransformationController._getFormDirectly()', survey.openRosaId, 'hasForm?', !!survey.form);
     return communicator
         .getXForm(survey)
         .then(communicator.getManifest)
@@ -115,8 +117,9 @@ function _getFormDirectly(survey) {
  *
  * @return { Promise<module:survey-model~SurveyObject> } a Promise resolving with survey object
  */
-function _authenticate(survey) {
-    return communicator.authenticate(survey);
+function _authenticate(survey, requestUrl, referer) {
+    console.log('TransformationController._authenticate()', survey.openRosaId, 'hasForm?', !!survey.form);
+    return communicator.authenticate(survey, requestUrl, referer);
 }
 
 /**
@@ -125,6 +128,8 @@ function _authenticate(survey) {
  * @return { Promise<module:survey-model~SurveyObject> } a Promise resolving with survey object
  */
 function _getFormFromCache(survey) {
+    console.log('TransformationController._getFormFromCache()', survey.openRosaId, 'hasForm?', !!survey.form);
+    //return _getFormDirectly(survey);
     return cacheModel.get(survey);
 }
 
@@ -135,9 +140,10 @@ function _getFormFromCache(survey) {
  *
  * @return { Promise<module:survey-model~SurveyObject> } a Promise resolving with survey object
  */
-function _updateCache(survey) {
+function _updateCache(survey, requestUrl, referer) {
+    console.log('TransformationController._updateCache()', survey.openRosaId, 'hasForm?', !!survey.form);
     return communicator
-        .getXFormInfo(survey)
+        .getXFormInfo(survey, requestUrl, referer)
         .then(communicator.getManifest)
         .then((survey) => Promise.all([survey, cacheModel.check(survey)]))
         .then(([survey, upToDate]) => {
@@ -157,6 +163,7 @@ function _updateCache(survey) {
         })
         .then(_addMediaHash)
         .catch((error) => {
+            console.log('TransformationController._updateCache()', 'error:', error);
             if (error.status === 401 || error.status === 404) {
                 cacheModel.flush(survey).catch((e) => {
                     if (e.status !== 404) {
@@ -215,6 +222,7 @@ function _checkQuota(survey) {
  * @param {module:survey-model~SurveyObject} survey - survey object
  */
 function _respond(res, survey) {
+    console.log('TransformationController._respond()', survey.openRosaId, 'hasForm?', !!survey.form);
     delete survey.credentials;
 
     survey = replaceMediaSources(survey);

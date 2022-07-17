@@ -30,6 +30,7 @@ if (process.env.NODE_ENV === 'test') {
  * @param { boolean } [protect] - whether to refuse if record is currently pending (to avoid editing conflicts)
  */
 function _cacheInstance(survey, protect = true) {
+    console.log('InstanceModel._cacheInstance()', survey.openRosaId, 'hasForm?', !!survey.form);
     return new Promise((resolve, reject) => {
         let error;
         if (
@@ -96,6 +97,7 @@ function _cacheInstance(survey, protect = true) {
  * @param {module:survey-model~SurveyObject} survey - survey object \n
  */
 function _getInstance(survey) {
+    console.log('InstanceModel._getInstance()', survey.openRosaId, 'hasForm?', !!survey.form);
     return new Promise((resolve, reject) => {
         let error;
         if (!survey || !survey.instanceId) {
@@ -105,7 +107,9 @@ function _getInstance(survey) {
             error.status = 400;
             reject(error);
         } else {
+            console.log('InstanceModel._getInstance()', 'fetching instance...');
             client.hgetall(`in:${survey.instanceId}`, (err, obj) => {
+                console.log('InstanceModel._getInstance()', 'fetched instance?', err || !!obj);
                 if (err) {
                     reject(err);
                 } else if (!obj) {
@@ -134,6 +138,7 @@ function _getInstance(survey) {
  * @param {module:survey-model~SurveyObject} survey - survey object \n
  */
 function _removeInstance(survey) {
+    console.log('InstanceModel._removeInstance()', survey.openRosaId, 'hasForm?', !!survey.form);
     return new Promise((resolve, reject) => {
         if (!survey || !survey.instanceId) {
             const error = new Error(

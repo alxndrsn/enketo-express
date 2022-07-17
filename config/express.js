@@ -14,6 +14,8 @@ const errorHandler = require('../app/controllers/error-handler');
 
 const controllersPath = path.join(__dirname, '../app/controllers');
 const app = express();
+// logging
+//app.use(logger('combined'));
 const debug = require('debug')('express');
 const config = require('../app/models/config-model');
 
@@ -171,9 +173,6 @@ fs.readdirSync(controllersPath).forEach((file) => {
         require(`${controllersPath}/${file}`)(app);
     }
 });
-
-// logging
-app.use(logger(app.get('env') === 'development' ? 'dev' : 'tiny'));
 
 // error handlers
 app.use(errorHandler['404']);
