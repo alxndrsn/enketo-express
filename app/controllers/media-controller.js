@@ -3,7 +3,6 @@
  */
 
 const url = require('url');
-const user = require('../models/user-model');
 const communicator = require('../lib/communicator');
 const request = require('request');
 const express = require('express');
@@ -14,24 +13,13 @@ const {
     RequestFilteringHttpAgent,
     RequestFilteringHttpsAgent,
 } = require('request-filtering-agent');
+const mediaLib = require('../lib/media');
 
 module.exports = (app) => {
     app.use(`${app.get('base path')}/media`, router);
 };
 
 router.get('/get/*', getMedia);
-
-/**
- * @param { string } [path] - path to media
- * @return {string|undefined} path transformed to a URL
- */
-function _extractMediaUrl(path) {
-    if (!path) {
-        return undefined;
-    }
-
-    return path.replace(/\//, '://');
-}
 
 function _isPrintView(req) {
     const refererQuery =
@@ -47,13 +35,26 @@ function _isPrintView(req) {
  * @param {module:api-controller~ExpressResponse} res - HTTP response
  * @param {Function} next - Express callback
  */
-function getMedia(req, res, next) {
+async function getMedia(req, res, next) {
+    const hostURLOptions = mediaLib.getHostURLOptions(req);
+    const url = await mediaLib.getHostURL(hostURLOptions);
+    const { auth, cookie } = hostURLOptions;
+
+    // TODO: while beginning to work on consolidating media logic,
+    // it was also discovered that partial content is not handled
+    // correctly when content is streamed through a proxy with
+    // incomplete configuration. Discovered during dev with the
+    // default ODK Central configuration.
+    //
+    // For example, this presents as being unable to seek <audio>
+    // in Chrome.
     const options = communicator.getUpdatedRequestOptions({
-        url: _extractMediaUrl(req.url.substring('/get/'.length)),
-        auth: user.getCredentials(req),
+        url,
+        auth,
         headers: {
-            cookie: req.headers.cookie,
+            cookie,
         },
+        encoding: null,
     });
 
     // due to a bug in request/request using options.method with Digest Auth we won't pass method as an option

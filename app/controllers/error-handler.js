@@ -37,6 +37,7 @@ module.exports = {
     // Express uses arguments length to determine whether a callback is an error handler.
     // eslint-disable-next-line no-unused-vars
     production(err, req, res, next) {
+        // console.log('err', err);
         // eslint-disable-line no-unused-vars
         const body = {
             code: err.status || 500,

@@ -4,6 +4,7 @@
 
 const request = require('request');
 const express = require('express');
+const mediaLib = require('../lib/media');
 const communicator = require('../lib/communicator');
 const surveyModel = require('../models/survey-model');
 const userModel = require('../models/user-model');
@@ -13,7 +14,6 @@ const utils = require('../lib/utils');
 
 const router = express.Router();
 const routerUtils = require('../lib/router-utils');
-const { toLocalMediaUrl } = require('../lib/url');
 // var debug = require( 'debug' )( 'submission-controller' );
 
 module.exports = (app) => {
@@ -168,18 +168,13 @@ function getInstance(req, res, next) {
                 .then((survey) => {
                     // check if found instance actually belongs to the form
                     if (utils.getOpenRosaKey(survey) === survey.openRosaKey) {
-                        // Change URLs of instanceAttachments to local URLs
-                        Object.keys(survey.instanceAttachments).forEach(
-                            (key) =>
-                                (survey.instanceAttachments[key] =
-                                    toLocalMediaUrl(
-                                        survey.instanceAttachments[key]
-                                    ))
-                        );
-
                         res.json({
                             instance: survey.instance,
-                            instanceAttachments: survey.instanceAttachments,
+                            instanceAttachments: mediaLib.cacheMediaURLs(
+                                survey.instanceId,
+                                survey.instanceAttachments,
+                                mediaLib.getHostURLOptions(req)
+                            ),
                         });
                     } else {
                         const error = new Error(

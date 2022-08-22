@@ -1,43 +1,109 @@
 const request = require('supertest');
 const http = require('http');
+const nock = require('nock');
+const sinon = require('sinon');
+const mediaLib = require('../../app/lib/media');
 const app = require('../../config/express');
-
-/**
- * Tests the request-filtering-agent to block SSRF attacks
- * change testHTMLBody to the body of an html file that
- * you are testing on. For the default, it says <im in.>
- * and is hosted in testHTMLHost.
- */
 
 const testHTMLBody = 'im in.';
 const portHTML = 1234;
-const testHTMLHost = `http/localhost:${portHTML}`;
-const testHTMLMetaHost = `http/0.0.0.0:${portHTML}`;
-const testHTMLValidHTTPSHost =
-    'https/www.w3.org/People/mimasa/test/imgformat/img/w3c_home_2.jpg';
+const testHTMLURL = `http://localhost:${portHTML}`;
+const testHTMLMetaURL = `http://0.0.0.0:${portHTML}`;
+const testHTMLValidHTTPSURL =
+    'https://www.w3.org/People/mimasa/test/imgformat/img/w3c_home_2.jpg';
 const localhost = '127.0.0.1';
 
-const requestURL = `/media/get/${testHTMLHost}`;
-const requestMetaURL = `/media/get/${testHTMLMetaHost}`;
-const requestValidHTTPSURL = `/media/get/${testHTMLValidHTTPSHost}`;
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end(testHTMLBody);
-});
+describe('Media controller', () => {
+    const enketoId = 'surveyA';
+    const hostURLs = [testHTMLURL, testHTMLMetaURL, testHTMLValidHTTPSURL];
 
-describe('Testing request-filtering-agent', () => {
     // Default everything disabled
     const allowPrivateIPAddress = false;
     const allowMetaIPAddress = false;
     const allowIPAddressList = [];
     const denyIPAddressList = [];
 
-    before(() => {
-        server.listen(portHTML);
+    /** @type {sinon.SinonSandbox} */
+    let sandbox;
+
+    /** @type {string} */
+    let requestURL;
+
+    /** @type {string} */
+    let requestMetaURL;
+
+    /** @type {string} */
+    let requestValidHTTPSURL;
+
+    /** @type {string} */
+    let mediaURLs;
+
+    /** @type {http.Server} */
+    let server;
+
+    beforeEach(async () => {
+        sandbox = sinon.createSandbox();
+
+        sandbox.stub(mediaLib, 'getHostURLOptions').callsFake((req) => ({
+            basePath: app.get('base path'),
+            deviceId: 'fake',
+            requestPath: req.url,
+        }));
+
+        const mediaMap = mediaLib.cacheMediaURLs(
+            enketoId,
+            {
+                'request.html': testHTMLURL,
+                'meta.html': testHTMLMetaURL,
+                'https.jpg': testHTMLValidHTTPSURL,
+            },
+            mediaLib.getHostURLOptions({
+                url: `${app.get('base path')}transform/xform/${enketoId}`,
+            })
+        );
+
+        requestURL = mediaMap['request.html'];
+        requestMetaURL = mediaMap['meta.html'];
+        requestValidHTTPSURL = mediaMap['https.jpg'];
+
+        mediaURLs = [requestURL, requestMetaURL, requestValidHTTPSURL];
+
+        const { origin, pathname } = new URL(testHTMLValidHTTPSURL);
+
+        nock(origin)
+            .get(pathname)
+            .reply(200, { hostURL: requestValidHTTPSURL });
+
+        server = http.createServer((req, res) => {
+            res.writeHead(200, { 'Content-Type': 'text/plain' });
+            res.end(testHTMLBody);
+        });
+
+        await new Promise((resolve) => {
+            server.listen(portHTML, resolve);
+        });
     });
 
-    after(() => {
-        server.close();
+    afterEach(async () => {
+        await new Promise((resolve) => {
+            server.close(resolve);
+        });
+
+        nock.cleanAll();
+        sandbox.restore();
+    });
+
+    it('requests the URL in a cached media map', async () => {
+        nock.cleanAll();
+
+        for await (const [index, mediaURL] of mediaURLs.entries()) {
+            const hostURL = hostURLs[index];
+            const { origin, pathname } = new URL(hostURL);
+
+            nock(origin).get(pathname).reply(200, { hostURL });
+
+            await request(app).get(mediaURL).expect(200, { hostURL });
+        }
     });
 
     // Tests WITH Referers
@@ -59,7 +125,7 @@ describe('Testing request-filtering-agent', () => {
                 500,
                 /DNS lookup .* is not allowed. Because, It is private IP address/
             )
-            .end(done);
+            .end(done, done);
     });
     it('for a private IP address WITH a Referer with allowPrivateIPAddress=false and allowMetaIPAddress=true', (done) => {
         // Only change one setting
@@ -79,7 +145,7 @@ describe('Testing request-filtering-agent', () => {
                 500,
                 /DNS lookup .* is not allowed. Because, It is private IP address/
             )
-            .end(done);
+            .end(done, done);
     });
     it('for a private IP address WITH a Referer with allowPrivateIPAddress=false but allowIPAddressList=[`127.0.0.1`]', (done) => {
         // Only change one setting
@@ -96,7 +162,7 @@ describe('Testing request-filtering-agent', () => {
             .get(requestURL)
             .set('Referer', 'https://google.com?print=true')
             .expect(200, testHTMLBody)
-            .end(done);
+            .end(done, done);
     });
     it('for a private IP address WITH a Referer with allowPrivateIPAddress=false and denyIPAddressList=[`127.0.0.1`]', (done) => {
         // Only change one setting
@@ -116,7 +182,7 @@ describe('Testing request-filtering-agent', () => {
                 500,
                 /DNS lookup .* is not allowed. Because, It is private IP address/
             )
-            .end(done);
+            .end(done, done);
     });
 
     // Tests with allowPrivateIPAddress TRUE
@@ -135,7 +201,7 @@ describe('Testing request-filtering-agent', () => {
             .get(requestURL)
             .set('Referer', 'https://google.com?print=true')
             .expect(200, testHTMLBody)
-            .end(done);
+            .end(done, done);
     });
     it('for a private IP address WITH a Referer with allowPrivateIPAddress=true and allowMetaIPAddress=true', (done) => {
         // Change two settings
@@ -153,7 +219,7 @@ describe('Testing request-filtering-agent', () => {
             .get(requestMetaURL)
             .set('Referer', 'https://google.com?print=true')
             .expect(200, testHTMLBody)
-            .end(done);
+            .end(done, done);
     });
     it('for a private IP address WITH a Referer with allowPrivateIPAddress=true and allowIPAddressList=[`127.0.0.1`]', (done) => {
         // Change two settings
@@ -171,7 +237,7 @@ describe('Testing request-filtering-agent', () => {
             .get(requestURL)
             .set('Referer', 'https://google.com?print=true')
             .expect(200, testHTMLBody)
-            .end(done);
+            .end(done, done);
     });
     it('for a private IP address WITH a Referer with allowPrivateIPAddress=true and denyIPAddressList=[`127.0.0.1`]', (done) => {
         // Change two settings
@@ -192,7 +258,7 @@ describe('Testing request-filtering-agent', () => {
                 500,
                 /DNS lookup .* is not allowed. Because It is defined in denyIPAddressList./
             )
-            .end(done);
+            .end(done, done);
     });
 
     // Tests WITHOUT Referers
@@ -213,7 +279,7 @@ describe('Testing request-filtering-agent', () => {
                 500,
                 /DNS lookup .* is not allowed. Because, It is private IP address./
             )
-            .end(done);
+            .end(done, done);
     });
     it('for a private IP address WITHOUT a Referer with allowPrivateIPAddress=false and allowMetaIPAddress=true', (done) => {
         // Only change one setting
@@ -232,7 +298,7 @@ describe('Testing request-filtering-agent', () => {
                 500,
                 /DNS lookup .* is not allowed. Because, It is private IP address/
             )
-            .end(done);
+            .end(done, done);
     });
     it('for a private IP address WITHOUT a Referer with allowPrivateIPAddress=false but allowIPAddressList=[`127.0.0.1`]', (done) => {
         // Only change one setting
@@ -245,7 +311,7 @@ describe('Testing request-filtering-agent', () => {
             denyIPAddressList,
         });
 
-        request(app).get(requestURL).expect(200, testHTMLBody).end(done);
+        request(app).get(requestURL).expect(200, testHTMLBody).end(done, done);
     });
     it('for a private IP address WITHOUT a Referer with allowPrivateIPAddress=false and denyIPAddressList=[`127.0.0.1`]', (done) => {
         // Only change one setting
@@ -264,7 +330,7 @@ describe('Testing request-filtering-agent', () => {
                 500,
                 /DNS lookup .* is not allowed. Because, It is private IP address/
             )
-            .end(done);
+            .end(done, done);
     });
 
     // Tests with allowPrivateIPAddress TRUE
@@ -279,7 +345,7 @@ describe('Testing request-filtering-agent', () => {
             denyIPAddressList,
         });
 
-        request(app).get(requestURL).expect(200, testHTMLBody).end(done);
+        request(app).get(requestURL).expect(200, testHTMLBody).end(done, done);
     });
     it('for a private IP address WITHOUT a Referer with allowPrivateIPAddress=true and allowMetaIPAddress=true', (done) => {
         // Change two settings
@@ -293,7 +359,10 @@ describe('Testing request-filtering-agent', () => {
             denyIPAddressList,
         });
 
-        request(app).get(requestMetaURL).expect(200, testHTMLBody).end(done);
+        request(app)
+            .get(requestMetaURL)
+            .expect(200, testHTMLBody)
+            .end(done, done);
     });
     it('for a private IP address WITHOUT a Referer with allowPrivateIPAddress=true and allowIPAddressList=[`127.0.0.1`]', (done) => {
         // Change two settings
@@ -307,7 +376,7 @@ describe('Testing request-filtering-agent', () => {
             denyIPAddressList,
         });
 
-        request(app).get(requestURL).expect(200, testHTMLBody).end(done);
+        request(app).get(requestURL).expect(200, testHTMLBody).end(done, done);
     });
     it('for a private IP address WITHOUT a Referer with allowPrivateIPAddress=true and denyIPAddressList=[`127.0.0.1`]', (done) => {
         // Change two settings
@@ -327,7 +396,7 @@ describe('Testing request-filtering-agent', () => {
                 500,
                 /DNS lookup .* is not allowed. Because It is defined in denyIPAddressList./
             )
-            .end(done);
+            .end(done, done);
     });
 
     // Testing valid https resource
@@ -340,6 +409,6 @@ describe('Testing request-filtering-agent', () => {
             denyIPAddressList,
         });
 
-        request(app).get(requestValidHTTPSURL).expect(200).end(done);
+        request(app).get(requestValidHTTPSURL).expect(200).end(done, done);
     });
 });

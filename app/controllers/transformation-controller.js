@@ -13,7 +13,7 @@ const utils = require('../lib/utils');
 const routerUtils = require('../lib/router-utils');
 const express = require('express');
 const url = require('url');
-const { replaceMediaSources } = require('../lib/url');
+const mediaLib = require('../lib/media');
 
 const router = express.Router();
 
@@ -65,6 +65,21 @@ function getSurveyParts(req, res, next) {
                         }
                         return _updateCache(survey);
                     })
+                    .then((survey) => {
+                        const { enketoId, manifest } = survey;
+                        const options = mediaLib.getHostURLOptions(req);
+                        const media = mediaLib.cacheMediaURLs(
+                            enketoId,
+                            manifest,
+                            options
+                        );
+
+                        return mediaLib.replaceMediaSources({
+                            ...survey,
+                            media,
+                        });
+                    })
+                    .then(mediaLib.replaceMediaSources)
                     .then((result) => {
                         _respond(res, result);
                     })
@@ -104,10 +119,7 @@ function getSurveyHash(req, res, next) {
  *
  */
 function _getFormDirectly(survey) {
-    return communicator
-        .getXForm(survey)
-        .then(communicator.getManifest)
-        .then(transformer.transform);
+    return communicator.getXForm(survey).then(transformer.transform);
 }
 
 /**
@@ -217,11 +229,10 @@ function _checkQuota(survey) {
 function _respond(res, survey) {
     delete survey.credentials;
 
-    survey = replaceMediaSources(survey);
-
     res.status(200);
     res.send({
         form: survey.form,
+        media: survey.media,
         // previously this was JSON.stringified, not sure why
         model: survey.model,
         theme: survey.theme,
