@@ -90,6 +90,11 @@ class ExpiringCacheMap extends Map {
 }
 
 // It's a URL mapping. How long could you need it? Ten minutes?
+/**
+ * Exported for tests.
+ *
+ * @private
+ */
 const MEDIA_MAP_CACHE_ENTRY_EXPIRATION_MS = 1000 * 60 * 10;
 
 const mediaMapCache = new ExpiringCacheMap({
@@ -186,6 +191,19 @@ const escapeFileName = (fileName) =>
         .replace(/[&<>"]/g, (character) => markupEntities[character]);
 
 /**
+ * @param {string} url
+ */
+const escapeURL = (url) => {
+    const { href, origin, pathname } = new URL(url, 'https://example.com');
+
+    if (!url.startsWith(`${origin}/`) && url !== origin) {
+        return pathname;
+    }
+
+    return href;
+};
+
+/**
  * @param {string}
  * @param {ManifestItem[] | Record<string, string>} media
  * @param {HostURLOptions} options
@@ -213,7 +231,7 @@ const cacheMediaURLs = (resourceId, media, options) => {
 
         const cacheKey = getCacheKey(deviceId, mediaURL);
 
-        mediaMapCache.set(cacheKey, hostURL);
+        mediaMapCache.set(cacheKey, escapeURL(hostURL));
         result[escapeFileName(fileName)] = mediaURL;
     });
 
@@ -271,21 +289,34 @@ const getInstanceAttachments = async (instanceId) => {
     return instanceAttachments;
 };
 
+/** @type {Map<string, Promise<Record<string, string> | ManifestItem[]>>} */
+const rebuildMediaURLCachePromises = new Map();
+
 /**
  * @param {ResourceType} resourceType
  * @param {string} resourceId
  * @param {HostURLOptions} options
  */
 const rebuildMediaURLCache = async (resourceType, resourceId, options) => {
-    mediaMapCache.expirationMS = 1000 * 60 * 10;
+    const promiseKey = `${resourceType}:${resourceId}:${options.deviceId}`;
 
-    let media;
+    let promise = rebuildMediaURLCachePromises.get(promiseKey);
+
+    if (promise != null) {
+        return promise;
+    }
 
     if (resourceType === ResourceType.MANIFEST) {
-        media = await getManifest(resourceId, options);
+        promise = getManifest(resourceId, options);
     } else {
-        media = await getInstanceAttachments(resourceId);
+        promise = getInstanceAttachments(resourceId);
     }
+
+    rebuildMediaURLCachePromises.set(promiseKey, promise);
+
+    const media = await promise;
+
+    rebuildMediaURLCachePromises.delete(promiseKey);
 
     cacheMediaURLs(resourceId, media, options);
 };
@@ -396,4 +427,5 @@ module.exports = {
     getHostURL,
     replaceMediaSources,
     ResourceType,
+    MEDIA_MAP_CACHE_ENTRY_EXPIRATION_MS,
 };

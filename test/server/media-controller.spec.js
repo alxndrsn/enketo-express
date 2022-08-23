@@ -26,6 +26,9 @@ describe('Media controller', () => {
     /** @type {sinon.SinonSandbox} */
     let sandbox;
 
+    /** @type {sinon.SinonFakeTimers} */
+    let timers;
+
     /** @type {string} */
     let requestURL;
 
@@ -43,6 +46,9 @@ describe('Media controller', () => {
 
     beforeEach(async () => {
         sandbox = sinon.createSandbox();
+        timers = sinon.useFakeTimers({
+            toFake: ['setTimeout'],
+        });
 
         sandbox.stub(mediaLib, 'getHostURLOptions').callsFake((req) => ({
             basePath: app.get('base path'),
@@ -90,6 +96,8 @@ describe('Media controller', () => {
         });
 
         nock.cleanAll();
+        timers.runAll();
+        timers.restore();
         sandbox.restore();
     });
 
