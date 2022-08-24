@@ -54,7 +54,6 @@ async function getMedia(req, res, next) {
         headers: {
             cookie,
         },
-        encoding: null,
     });
 
     // due to a bug in request/request using options.method with Digest Auth we won't pass method as an option

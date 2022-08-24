@@ -50,12 +50,13 @@ describe('Media library', () => {
 
     const defaultManifest = [
         {
-            downloadUrl: 'https://example.com/an image with a description.jpg',
+            downloadUrl:
+                'https://example.com/an image <with> a description.jpg',
             hash: 'irrelevant',
             filename: 'an image.jpg',
         },
         {
-            downloadUrl: 'https://example.com/a song with a title.mp3',
+            downloadUrl: 'https://example.com/a song & a "title".mp3',
             hash: 'irrelevant',
             filename: 'a song.mp3',
         },
@@ -73,7 +74,8 @@ describe('Media library', () => {
     };
 
     const defaultInstanceAttachments = {
-        'a spreadsheet.csv': 'https://example.com/a spreadsheet named foo.csv',
+        'a spreadsheet.csv':
+            'https://example.com/a directory/a spreadsheet named foo.csv',
         'an instance.xml': 'https://example.com/an instance named bar.xml',
     };
 
@@ -146,8 +148,8 @@ describe('Media library', () => {
                     'a%20song.mp3': '/-/media/get/0/form1/a%20song.mp3',
                 },
                 expectedHostURLs: [
-                    'https://example.com/an%20image%20with%20a%20description.jpg',
-                    'https://example.com/a%20song%20with%20a%20title.mp3',
+                    'https://example.com/an%20image%20%3Cwith%3E%20a%20description.jpg',
+                    'https://example.com/a%20song%20&%20a%20%22title%22.mp3',
                 ],
                 expectUncachedLookup: {
                     get stub() {
@@ -173,7 +175,7 @@ describe('Media library', () => {
                         '/-/media/get/1/submission1/an%20instance.xml',
                 },
                 expectedHostURLs: [
-                    'https://example.com/a%20spreadsheet%20named%20foo.csv',
+                    'https://example.com/a%20directory/a%20spreadsheet%20named%20foo.csv',
                     'https://example.com/an%20instance%20named%20bar.xml',
                 ],
                 expectUncachedLookup: {
@@ -363,8 +365,8 @@ describe('Media library', () => {
             );
 
             const expectedHostURLs = [
-                'https://example.com/an%20image%20with%20a%20description-other-device.jpg',
-                'https://example.com/a%20song%20with%20a%20title-other-device.mp3',
+                'https://example.com/an%20image%20%3Cwith%3E%20a%20description-other-device.jpg',
+                'https://example.com/a%20song%20&%20a%20%22title%22-other-device.mp3',
             ];
 
             expect(actual).to.deep.equal(expectedHostURLs);

@@ -85,20 +85,45 @@ describe('Media controller', () => {
             res.end(testHTMLBody);
         });
 
-        await new Promise((resolve) => {
-            server.listen(portHTML, resolve);
+        await new Promise((resolve, reject) => {
+            server.on('error', reject);
+            server.listen(portHTML, () => {
+                server.removeListener('error', reject);
+                resolve();
+            });
         });
     });
 
     afterEach(async () => {
-        await new Promise((resolve) => {
-            server.close(resolve);
-        });
-
-        nock.cleanAll();
         timers.runAll();
         timers.restore();
+
+        let caught;
+
+        try {
+            await new Promise((resolve, reject) => {
+                if (server == null) {
+                    reject();
+                }
+
+                server.close((error) => {
+                    if (error != null) {
+                        reject(error);
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+        } catch (error) {
+            caught = error;
+        }
+
+        nock.cleanAll();
         sandbox.restore();
+
+        if (caught != null) {
+            throw caught;
+        }
     });
 
     it('requests the URL in a cached media map', async () => {

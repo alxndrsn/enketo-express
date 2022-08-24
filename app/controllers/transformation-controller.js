@@ -79,7 +79,6 @@ function getSurveyParts(req, res, next) {
                             media,
                         });
                     })
-                    .then(mediaLib.replaceMediaSources)
                     .then((result) => {
                         _respond(res, result);
                     })

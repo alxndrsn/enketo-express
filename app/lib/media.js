@@ -42,7 +42,7 @@ class ExpiringCacheMap extends Map {
      * @private
      * @param {Key} key
      */
-    resetExpiation(key) {
+    resetExpiration(key) {
         let timer = this.invalidationTimers.get(key);
 
         if (timer != null) {
@@ -63,7 +63,7 @@ class ExpiringCacheMap extends Map {
     get(key) {
         const result = super.get(key);
 
-        this.resetExpiation(key);
+        this.resetExpiration(key);
 
         return result;
     }
@@ -74,7 +74,7 @@ class ExpiringCacheMap extends Map {
     has(key) {
         const result = super.has(key);
 
-        this.resetExpiation(key);
+        this.resetExpiration(key);
 
         return result;
     }
@@ -85,7 +85,7 @@ class ExpiringCacheMap extends Map {
      */
     set(key, value) {
         super.set(key, value);
-        this.resetExpiation(key);
+        this.resetExpiration(key);
     }
 }
 
@@ -167,13 +167,6 @@ const createMediaURL = (options) => {
     return transformer.escapeURLPath(mediaPath);
 };
 
-/**
- * @param {string} requestPath
- * @param {MediaURLSegments} [options]
- */
-const getMediaURL = (requestPath) =>
-    createMediaURL(matchMediaURLSegments(requestPath));
-
 const markupEntities = {
     '<': '&lt;',
     '>': '&gt;',
@@ -194,13 +187,15 @@ const escapeFileName = (fileName) =>
  * @param {string} url
  */
 const escapeURL = (url) => {
-    const { href, origin, pathname } = new URL(url, 'https://example.com');
+    const isFullyQualified = /^[a-z]+:/.test(url);
 
-    if (!url.startsWith(`${origin}/`) && url !== origin) {
-        return pathname;
+    if (isFullyQualified) {
+        const { href } = new URL(url);
+
+        return href;
     }
 
-    return href;
+    return transformer.escapeURLPath(url);
 };
 
 /**
@@ -365,11 +360,6 @@ const getHostURL = async (options) => {
         ...mediaURLSegments,
         basePath,
     });
-
-    if (mediaURL == null) {
-        return requestPath;
-    }
-
     const cacheKey = getCacheKey(deviceId, mediaURL);
     let hostURL = mediaMapCache.get(cacheKey);
 
@@ -422,10 +412,7 @@ const replaceMediaSources = (survey) => {
 
 module.exports = {
     cacheMediaURLs,
-    getMediaURL,
     getHostURLOptions,
     getHostURL,
     replaceMediaSources,
-    ResourceType,
-    MEDIA_MAP_CACHE_ENTRY_EXPIRATION_MS,
 };
