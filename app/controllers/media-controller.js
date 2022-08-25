@@ -13,6 +13,7 @@ const {
     RequestFilteringHttpAgent,
     RequestFilteringHttpsAgent,
 } = require('request-filtering-agent');
+const { ResponseError } = require('../lib/custom-error');
 const mediaLib = require('../lib/media');
 
 module.exports = (app) => {
@@ -38,6 +39,14 @@ function _isPrintView(req) {
 async function getMedia(req, res, next) {
     const hostURLOptions = mediaLib.getHostURLOptions(req);
     const url = await mediaLib.getHostURL(hostURLOptions);
+
+    if (url == null) {
+        const error = new ResponseError(404, 'Not found');
+
+        next(error);
+        return;
+    }
+
     const { auth, cookie } = hostURLOptions;
 
     // TODO: while beginning to work on consolidating media logic,

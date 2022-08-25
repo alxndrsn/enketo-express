@@ -227,6 +227,16 @@ const cacheMediaURLs = (resourceId, media, options) => {
         const cacheKey = getCacheKey(deviceId, mediaURL);
 
         mediaMapCache.set(cacheKey, escapeURL(hostURL));
+
+        /**
+         * For future reference: special URL characters are escaped in jr: URLs
+         * by enketo-transformer. Those URLs are then replaced with actual media
+         * URLs by enketo-express (currently below in `replaceMediaSources`, but
+         * we'll hopefully move the logic client-side in the near future), by
+         * matching the file name portion of each URL to the keys in this media
+         * mapping. We perform the same escaping logic here to ensure keys match
+         * file names when they have special URL characters.
+         */
         result[escapeFileName(fileName)] = mediaURL;
     });
 
@@ -370,7 +380,7 @@ const getHostURL = async (options) => {
         hostURL = mediaMapCache.get(cacheKey);
     }
 
-    return hostURL ?? requestPath;
+    return hostURL ?? null;
 };
 
 /**

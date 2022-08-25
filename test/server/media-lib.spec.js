@@ -335,7 +335,7 @@ describe('Media library', () => {
                         '-other-device.$1'
                     ),
                     hash: hash.toUpperCase(),
-                    filename: filename.replace(/\.(jpg|mp3)/, '.$1'),
+                    filename,
                 })
             );
             getManifestStub.callsFake(async (survey) => ({
