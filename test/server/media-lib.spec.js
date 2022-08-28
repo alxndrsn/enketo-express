@@ -3,6 +3,7 @@ const nock = require('nock');
 const sinon = require('sinon');
 const communicator = require('../../app/lib/communicator');
 const mediaLib = require('../../app/lib/media');
+const cacheModel = require('../../app/models/cache-model');
 const instanceModel = require('../../app/models/instance-model');
 const surveyModel = require('../../app/models/survey-model');
 
@@ -45,19 +46,18 @@ describe('Media library', () => {
 
     const defaultBaseHostURLOptions = {
         basePath: '-',
-        deviceId: 'device1',
     };
 
     const defaultManifest = [
         {
             downloadUrl:
                 'https://example.com/an image <with> a description.jpg',
-            hash: 'irrelevant',
+            hash: 'b37732',
             filename: 'an image.jpg',
         },
         {
             downloadUrl: 'https://example.com/a song & a "title".mp3',
-            hash: 'irrelevant',
+            hash: 'b4db33f',
             filename: 'a song.mp3',
         },
     ];
@@ -144,24 +144,14 @@ describe('Media library', () => {
                 media: defaultManifest,
                 options: defaultBaseHostURLOptions,
                 expectedMediaMap: {
-                    'an%20image.jpg': '/-/media/get/0/form1/an%20image.jpg',
-                    'a%20song.mp3': '/-/media/get/0/form1/a%20song.mp3',
+                    'an%20image.jpg':
+                        '/-/media/get/0/form1/b37732/an%20image.jpg',
+                    'a%20song.mp3': '/-/media/get/0/form1/b4db33f/a%20song.mp3',
                 },
                 expectedHostURLs: [
                     'https://example.com/an%20image%20%3Cwith%3E%20a%20description.jpg',
                     'https://example.com/a%20song%20&%20a%20%22title%22.mp3',
                 ],
-                expectUncachedLookup: {
-                    get stub() {
-                        return getManifestStub;
-                    },
-                    args: [
-                        {
-                            ...defaultCachedSurveyDetails,
-                            ...defaultXFormInfo,
-                        },
-                    ],
-                },
             },
             {
                 type: 'instance attachments',
@@ -178,12 +168,6 @@ describe('Media library', () => {
                     'https://example.com/a%20directory/a%20spreadsheet%20named%20foo.csv',
                     'https://example.com/an%20instance%20named%20bar.xml',
                 ],
-                expectUncachedLookup: {
-                    get stub() {
-                        return getInstanceStub;
-                    },
-                    args: [{ instanceId: defaultInstanceId }],
-                },
             },
         ].forEach(
             ({
@@ -193,14 +177,13 @@ describe('Media library', () => {
                 options,
                 expectedMediaMap,
                 expectedHostURLs,
-                expectUncachedLookup,
             }) => {
                 const requestPaths = Array.from(
                     Object.values(expectedMediaMap)
                 ).map((mediaURL) => mediaURL.replace('/-/media', ''));
 
-                it(`creates a media mapping from ${type}`, () => {
-                    const mediaMap = mediaLib.cacheMediaURLs(
+                it(`creates a media mapping from ${type}`, async () => {
+                    const mediaMap = await mediaLib.getMediaMap(
                         resourceId,
                         media,
                         options
@@ -210,7 +193,7 @@ describe('Media library', () => {
                 });
 
                 it(`gets urls from the cached ${type} media mapping`, async () => {
-                    mediaLib.cacheMediaURLs(
+                    await mediaLib.getMediaMap(
                         resourceId,
                         media,
                         defaultBaseHostURLOptions
@@ -226,9 +209,10 @@ describe('Media library', () => {
                     );
 
                     expect(actual).to.deep.equal(expectedHostURLs);
-                    expect(
-                        expectUncachedLookup.stub.getCalls().length
-                    ).to.equal(0);
+
+                    if (type === 'manifest') {
+                        expect(getManifestStub.getCalls().length).to.equal(0);
+                    }
                 });
 
                 it(`populates the ${type} media mapping cache from the OpenRosa server when not cached`, async () => {
@@ -242,13 +226,13 @@ describe('Media library', () => {
                     );
 
                     expect(actual).to.deep.equal(expectedHostURLs);
-                    expect(
-                        expectUncachedLookup.stub.getCalls().length
-                    ).to.equal(1);
-                    sinon.assert.calledWith(
-                        expectUncachedLookup.stub,
-                        ...expectUncachedLookup.args
-                    );
+
+                    if (type === 'manifest') {
+                        expect(getManifestStub).to.have.been.calledOnceWith({
+                            ...defaultCachedSurveyDetails,
+                            ...defaultXFormInfo,
+                        });
+                    }
 
                     actual = await Promise.all(
                         requestPaths.map((requestPath) =>
@@ -260,13 +244,14 @@ describe('Media library', () => {
                     );
 
                     expect(actual).to.deep.equal(expectedHostURLs);
-                    expect(
-                        expectUncachedLookup.stub.getCalls().length
-                    ).to.equal(1);
+
+                    if (type === 'manifest') {
+                        expect(getManifestStub.getCalls().length).to.equal(1);
+                    }
                 });
 
                 it(`populates the ${type} media mapping cache from the OpenRosa server when the cache has expired`, async () => {
-                    mediaLib.cacheMediaURLs(resourceId, media, options);
+                    await mediaLib.getMediaMap(resourceId, media, options);
 
                     let actual = await Promise.all(
                         requestPaths.map((requestPath) =>
@@ -278,11 +263,30 @@ describe('Media library', () => {
                     );
 
                     expect(actual).to.deep.equal(expectedHostURLs);
-                    expect(
-                        expectUncachedLookup.stub.getCalls().length
-                    ).to.equal(0);
 
-                    timers.next();
+                    if (type === 'manifest') {
+                        expect(getManifestStub.getCalls().length).to.equal(0);
+                    }
+
+                    await cacheModel.flushAll();
+
+                    actual = await Promise.all(
+                        requestPaths.map((requestPath) =>
+                            mediaLib.getHostURL({
+                                ...defaultBaseHostURLOptions,
+                                requestPath,
+                            })
+                        )
+                    );
+
+                    expect(actual).to.deep.equal(expectedHostURLs);
+
+                    if (type === 'manifest') {
+                        expect(getManifestStub).to.have.been.calledOnceWith({
+                            ...defaultCachedSurveyDetails,
+                            ...defaultXFormInfo,
+                        });
+                    }
 
                     actual = await Promise.all(
                         requestPaths.map((requestPath) =>
@@ -295,44 +299,25 @@ describe('Media library', () => {
 
                     expect(actual).to.deep.equal(expectedHostURLs);
 
-                    expect(
-                        expectUncachedLookup.stub.getCalls().length
-                    ).to.equal(1);
-                    sinon.assert.calledWith(
-                        expectUncachedLookup.stub,
-                        ...expectUncachedLookup.args
-                    );
-
-                    actual = await Promise.all(
-                        requestPaths.map((requestPath) =>
-                            mediaLib.getHostURL({
-                                ...defaultBaseHostURLOptions,
-                                requestPath,
-                            })
-                        )
-                    );
-
-                    expect(actual).to.deep.equal(expectedHostURLs);
-                    expect(
-                        expectUncachedLookup.stub.getCalls().length
-                    ).to.equal(1);
-                    expect(expectUncachedLookup.stub).to.have.been.calledWith();
+                    if (type === 'manifest') {
+                        expect(getManifestStub.getCalls().length).to.equal(1);
+                    }
                 });
             }
         );
 
-        it('caches manifest media separately for each device', async () => {
-            mediaLib.cacheMediaURLs(
+        it('caches manifest media separately for each hash', async () => {
+            await mediaLib.getMediaMap(
                 defaultEnketoId,
                 defaultManifest,
                 defaultBaseHostURLOptions
             );
 
-            const otherDeviceManifest = defaultManifest.map(
+            const otherSessionManifest = defaultManifest.map(
                 ({ downloadUrl, hash, filename }) => ({
                     downloadUrl: downloadUrl.replace(
                         /\.(jpg|mp3)/,
-                        '-other-device.$1'
+                        '-other-session.$1'
                     ),
                     hash: hash.toUpperCase(),
                     filename,
@@ -340,16 +325,15 @@ describe('Media library', () => {
             );
             getManifestStub.callsFake(async (survey) => ({
                 ...survey,
-                manifest: otherDeviceManifest,
+                manifest: otherSessionManifest,
             }));
             const options = {
                 ...defaultBaseHostURLOptions,
-                deviceId: 'device2',
             };
 
             const expectedMediaMap = {
-                'an%20image.jpg': '/-/media/get/0/form1/an%20image.jpg',
-                'a%20song.mp3': '/-/media/get/0/form1/a%20song.mp3',
+                'an%20image.jpg': '/-/media/get/0/form1/B37732/an%20image.jpg',
+                'a%20song.mp3': '/-/media/get/0/form1/B4DB33F/a%20song.mp3',
             };
             const requestPaths = Array.from(
                 Object.values(expectedMediaMap)
@@ -365,8 +349,8 @@ describe('Media library', () => {
             );
 
             const expectedHostURLs = [
-                'https://example.com/an%20image%20%3Cwith%3E%20a%20description-other-device.jpg',
-                'https://example.com/a%20song%20&%20a%20%22title%22-other-device.mp3',
+                'https://example.com/an%20image%20%3Cwith%3E%20a%20description-other-session.jpg',
+                'https://example.com/a%20song%20&%20a%20%22title%22-other-session.mp3',
             ];
 
             expect(actual).to.deep.equal(expectedHostURLs);
@@ -387,99 +371,6 @@ describe('Media library', () => {
 
             expect(actual).to.deep.equal(expectedHostURLs);
             expect(getManifestStub.getCalls().length).to.equal(1);
-        });
-    });
-
-    describe('media sources', () => {
-        const survey = {
-            enketoId: 'survey3',
-            form: `
-                <form>
-                    <div class="form-logo"></div>
-                    <img src="jr://images/an%20image.jpg">
-                    <video src="jr://videos/a%20video.mp4">
-                </form>
-            `,
-            media: {
-                'an%20image.jpg': '/-/media/get/0/survey3/an%20image.jpg',
-                'a%20video.mp4': '/-/media/get/0/survey3/a%20video.mp4',
-                'another%20image.png':
-                    '/-/media/get/0/survey3/another%20image.png',
-                'another%20video.avi':
-                    '/-/media/get/0/survey3/another%20video.avi',
-            },
-            model: `
-                <model>
-                    <instance>
-                        <media-urls
-                            xmlns:jr="http://openrosa.org/javarosa"
-                            xmlns:odk="http://www.opendatakit.org/xforms"
-                            xmlns:orx="http://openrosa.org/xforms"
-                            id="media-urls"
-                        >
-                            <a src="jr://images/another%20image.png">jr://images/another%20image.png</a>
-                            <b src="jr://videos/another%20video.avi">jr://videos/another%20video.avi</b>
-                            <dra2/>
-                            <happy/>
-                            <unhappy/>
-                            <meta>
-                                <instanceID/>
-                            </meta>
-                        </media-urls>
-                    </instance>
-                </model>
-            `,
-        };
-
-        it('replaces media sources from a media mapping', () => {
-            const { form, model } = mediaLib.replaceMediaSources(survey);
-
-            expect(form).to.equal(`
-                <form>
-                    <div class="form-logo"></div>
-                    <img src="/-/media/get/0/survey3/an%20image.jpg">
-                    <video src="/-/media/get/0/survey3/a%20video.mp4">
-                </form>
-            `);
-            expect(model).to.equal(`
-                <model>
-                    <instance>
-                        <media-urls
-                            xmlns:jr="http://openrosa.org/javarosa"
-                            xmlns:odk="http://www.opendatakit.org/xforms"
-                            xmlns:orx="http://openrosa.org/xforms"
-                            id="media-urls"
-                        >
-                            <a src="/-/media/get/0/survey3/another%20image.png">jr://images/another%20image.png</a>
-                            <b src="/-/media/get/0/survey3/another%20video.avi">jr://videos/another%20video.avi</b>
-                            <dra2/>
-                            <happy/>
-                            <unhappy/>
-                            <meta>
-                                <instanceID/>
-                            </meta>
-                        </media-urls>
-                    </instance>
-                </model>
-            `);
-        });
-
-        it('adds a form logo if included in the media mapping', () => {
-            const { form } = mediaLib.replaceMediaSources({
-                ...survey,
-                media: {
-                    ...survey.media,
-                    'form_logo.png': '/-/media/get/0/survey3/form_logo.png',
-                },
-            });
-
-            expect(form).to.equal(`
-                <form>
-                    <div class="form-logo"><img src="/-/media/get/0/survey3/form_logo.png" alt="form logo"></div>
-                    <img src="/-/media/get/0/survey3/an%20image.jpg">
-                    <video src="/-/media/get/0/survey3/a%20video.mp4">
-                </form>
-            `);
         });
     });
 });

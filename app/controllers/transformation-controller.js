@@ -46,46 +46,40 @@ router
  * @param {module:api-controller~ExpressResponse} res - HTTP response
  * @param {Function} next - Express callback
  */
-function getSurveyParts(req, res, next) {
-    _getSurveyParams(req)
-        .then((survey) => {
-            if (survey.info) {
-                // A request with "xformUrl" body parameter was used (unlaunched form)
-                _getFormDirectly(survey)
-                    .then((survey) => {
-                        _respond(res, survey);
-                    })
-                    .catch(next);
-            } else {
-                _authenticate(survey)
-                    .then(_getFormFromCache)
-                    .then((result) => {
-                        if (result) {
-                            return _updateCache(result);
-                        }
-                        return _updateCache(survey);
-                    })
-                    .then((survey) => {
-                        const { enketoId, manifest } = survey;
-                        const options = mediaLib.getHostURLOptions(req);
-                        const media = mediaLib.cacheMediaURLs(
-                            enketoId,
-                            manifest,
-                            options
-                        );
+async function getSurveyParts(req, res, next) {
+    try {
+        let survey = await _getSurveyParams(req);
 
-                        return mediaLib.replaceMediaSources({
-                            ...survey,
-                            media,
-                        });
-                    })
-                    .then((result) => {
-                        _respond(res, result);
-                    })
-                    .catch(next);
-            }
-        })
-        .catch(next);
+        // A request with "xformUrl" body parameter was used (unlaunched form)
+        if (survey.info != null) {
+            survey = await _getFormDirectly(survey);
+
+            _respond(res, survey);
+
+            return;
+        }
+
+        const authenticated = await _authenticate(survey);
+        const cached = await _getFormFromCache(authenticated);
+
+        survey = await _updateCache(cached ?? survey);
+
+        const { enketoId, manifest, mediaHash } = survey;
+        const mediaOptions = mediaLib.getHostURLOptions(req, mediaHash);
+
+        const media = await mediaLib.getMediaMap(
+            enketoId,
+            manifest,
+            mediaOptions
+        );
+
+        _respond(res, {
+            ...survey,
+            media,
+        });
+    } catch (error) {
+        next(error);
+    }
 }
 
 /**

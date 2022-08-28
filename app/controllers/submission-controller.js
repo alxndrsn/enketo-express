@@ -4,6 +4,7 @@
 
 const request = require('request');
 const express = require('express');
+const errors = require('../lib/custom-error');
 const mediaLib = require('../lib/media');
 const communicator = require('../lib/communicator');
 const surveyModel = require('../models/survey-model');
@@ -158,35 +159,34 @@ function maxSize(req, res, next) {
  * @param {module:api-controller~ExpressResponse} res - HTTP response
  * @param {Function} next - Express callback
  */
-function getInstance(req, res, next) {
-    surveyModel
-        .get(req.enketoId)
-        .then((survey) => {
-            survey.instanceId = req.query.instanceId;
-            instanceModel
-                .get(survey)
-                .then((survey) => {
-                    // check if found instance actually belongs to the form
-                    if (utils.getOpenRosaKey(survey) === survey.openRosaKey) {
-                        res.json({
-                            instance: survey.instance,
-                            instanceAttachments: mediaLib.cacheMediaURLs(
-                                survey.instanceId,
-                                survey.instanceAttachments,
-                                mediaLib.getHostURLOptions(req)
-                            ),
-                        });
-                    } else {
-                        const error = new Error(
-                            "Instance doesn't belong to this form"
-                        );
-                        error.status = 400;
-                        throw error;
-                    }
-                })
-                .catch(next);
-        })
-        .catch(next);
+async function getInstance(req, res, next) {
+    try {
+        const survey = await surveyModel.get(req.enketoId);
+
+        const instance = await instanceModel.get({
+            instanceId: req.query.instanceId,
+        });
+
+        if (utils.getOpenRosaKey(survey) !== instance.openRosaKey) {
+            throw new errors.ResponseError(
+                400,
+                "Instance doesn't belong to this form"
+            );
+        }
+
+        const instanceAttachments = await mediaLib.getMediaMap(
+            instance.instanceId,
+            instance.instanceAttachments,
+            mediaLib.getHostURLOptions(req)
+        );
+
+        res.json({
+            instance: instance.instance,
+            instanceAttachments,
+        });
+    } catch (error) {
+        next(error);
+    }
 }
 
 /**

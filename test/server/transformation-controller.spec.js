@@ -1,12 +1,10 @@
 const { expect } = require('chai');
-const transformer = require('enketo-transformer');
 const request = require('supertest');
 const sinon = require('sinon');
 const communicator = require('../../app/lib/communicator');
 const mediaLib = require('../../app/lib/media');
 const accountModel = require('../../app/models/account-model');
 const config = require('../../app/models/config-model').server;
-const cacheModel = require('../../app/models/cache-model');
 const surveyModel = require('../../app/models/survey-model');
 const userModel = require('../../app/models/user-model');
 
@@ -47,7 +45,7 @@ describe('Transformation Controller', () => {
     let getManifestStub;
 
     /** @type {import('sinon').SinonStub} */
-    let cacheMediaStub;
+    let getMediaMapStub;
 
     beforeEach(async () => {
         sandbox = sinon.createSandbox();
@@ -146,7 +144,7 @@ describe('Transformation Controller', () => {
                 .stub(mediaLib, 'getHostURLOptions')
                 .callsFake(() => mediaOptions);
 
-            cacheMediaStub = sandbox.stub(mediaLib, 'cacheMediaURLs');
+            getMediaMapStub = sandbox.stub(mediaLib, 'getMediaMap');
 
             // Stub getXForm
             xform = `
@@ -269,14 +267,6 @@ describe('Transformation Controller', () => {
                         manifest,
                     })
                 );
-
-            sandbox
-                .stub(mediaLib, 'replaceMediaSources')
-                .callsFake((survey) => ({
-                    ...survey,
-                    form: 'replaced form',
-                    model: 'replaced model',
-                }));
         });
 
         describe('cached forms', () => {
@@ -296,14 +286,7 @@ describe('Transformation Controller', () => {
             it('caches media sources', async () => {
                 await getTransformResult();
 
-                expect(cacheMediaStub.getCalls().length).to.equal(1);
-            });
-
-            it('replaces media sources', async () => {
-                const result = await getTransformResult();
-
-                expect(result.form).to.equal('replaced form');
-                expect(result.model).to.equal('replaced model');
+                expect(getMediaMapStub.getCalls().length).to.equal(1);
             });
         });
 
@@ -326,30 +309,7 @@ describe('Transformation Controller', () => {
             it('does not cache media sources', async () => {
                 await getTransformResult();
 
-                expect(cacheMediaStub.getCalls().length).to.equal(0);
-            });
-
-            it('does not replace media sources', async () => {
-                let transformedForm;
-                let transformedModel;
-
-                const { transform } = transformer;
-
-                sandbox
-                    .stub(transformer, 'transform')
-                    .callsFake(async (survey) => {
-                        const result = await transform(survey);
-
-                        transformedForm = result.form;
-                        transformedModel = result.model;
-
-                        return result;
-                    });
-
-                const result = await getTransformResult();
-
-                expect(result.form).to.equal(transformedForm);
-                expect(result.model).to.equal(transformedModel);
+                expect(getMediaMapStub.getCalls().length).to.equal(0);
             });
         });
     });

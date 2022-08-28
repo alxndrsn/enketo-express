@@ -20,8 +20,9 @@ describe('Submissions', () => {
     /** @type {import('sinon').SinonSandbox} */
     let sandbox;
 
+    // TODO remove this check and test for escaping/media URL replacement instead
     /** @type {import('sinon').SinonStub} */
-    let cacheMediaStub;
+    let getMediaMapStub;
 
     /** @type {string} */
     let enketoId;
@@ -33,7 +34,7 @@ describe('Submissions', () => {
     beforeEach((done) => {
         sandbox = sinon.createSandbox();
 
-        cacheMediaStub = sandbox.stub(mediaLib, 'cacheMediaURLs');
+        getMediaMapStub = sandbox.stub(mediaLib, 'getMediaMap');
 
         // add survey if it doesn't exist in the db
         surveyModel
@@ -184,7 +185,7 @@ describe('Submissions', () => {
                     'attached-file.jpg': '/media/get/attached-file.jpg',
                 };
 
-                cacheMediaStub.returns(cachedAttachments);
+                getMediaMapStub.returns(cachedAttachments);
 
                 const { body } = await request(app)
                     .get(`/submission/${enketoId}?instanceId=c`)

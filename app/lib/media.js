@@ -1,111 +1,12 @@
 /* eslint-disable max-classes-per-file */
 
 const transformer = require('enketo-transformer');
-const path = require('path');
+const path = require('path/posix');
+const cacheModel = require('../models/cache-model');
 const instanceModel = require('../models/instance-model');
 const surveyModel = require('../models/survey-model');
 const userModel = require('../models/user-model');
 const communicator = require('./communicator');
-const error = require('./custom-error');
-
-/**
- * @typedef ExpiringCacheMapOptions
- * @property {number} expirationMS
- */
-
-/**
- * @template Key
- * @template Value
- * @extends Map<Key, Value>
- */
-class ExpiringCacheMap extends Map {
-    /**
-     * @param {ExpiringCacheMapOptions} options
-     * @param {readonly (readonly [Key, Value])[] | null} [entries]
-     */
-    constructor(options, entries) {
-        super(entries);
-
-        /** @private */
-        this.expirationMS = options.expirationMS;
-
-        /**
-         * @private
-         * @type {Map<Key, number>}
-         */
-        this.invalidationTimers = new Map();
-    }
-
-    /**
-     * One of the hard problems...
-     *
-     * @private
-     * @param {Key} key
-     */
-    resetExpiration(key) {
-        let timer = this.invalidationTimers.get(key);
-
-        if (timer != null) {
-            clearTimeout(timer);
-        }
-
-        timer = setTimeout(() => {
-            super.delete(key);
-            this.invalidationTimers.delete(key);
-        }, this.expirationMS);
-
-        this.invalidationTimers.set(key, timer);
-    }
-
-    /**
-     * @param {Key} key
-     */
-    get(key) {
-        const result = super.get(key);
-
-        this.resetExpiration(key);
-
-        return result;
-    }
-
-    /**
-     * @param {Key} key
-     */
-    has(key) {
-        const result = super.has(key);
-
-        this.resetExpiration(key);
-
-        return result;
-    }
-
-    /**
-     * @param {Key} key
-     * @param {Value} value
-     */
-    set(key, value) {
-        super.set(key, value);
-        this.resetExpiration(key);
-    }
-}
-
-// It's a URL mapping. How long could you need it? Ten minutes?
-/**
- * Exported for tests.
- *
- * @private
- */
-const MEDIA_MAP_CACHE_ENTRY_EXPIRATION_MS = 1000 * 60 * 10;
-
-const mediaMapCache = new ExpiringCacheMap({
-    expirationMS: MEDIA_MAP_CACHE_ENTRY_EXPIRATION_MS,
-});
-
-/**
- * @param {string | null} deviceId
- * @param {string}
- */
-const getCacheKey = (deviceId, mediaURL) => `${deviceId}:${mediaURL}`;
 
 /** @enum {typeof ResourceType[keyof typeof ResourceType]} */
 const ResourceType = /** @type {const} */ ({
@@ -127,15 +28,18 @@ const ResourceType = /** @type {const} */ ({
 const matchMediaURLSegments = (requestPath) => {
     // Note: express `request.url` begins with the path attached to the
     // *route*, rather than the full request path.
-    const matches = requestPath.match(/^\/get\/([01])\/([^/]+)\/(.+$)/);
+    const matches = requestPath.match(
+        /^\/get\/([01])\/([^/]+)(?:\/([^/]+))?\/(.+$)/
+    );
 
     if (matches != null) {
-        const [, resourceType, resourceId, fileName] = matches;
+        const [, resourceType, resourceId, hash, fileName] = matches;
 
         return {
             resourceType,
             resourceId,
             fileName,
+            hash,
         };
     }
 };
@@ -152,17 +56,20 @@ const matchMediaURLSegments = (requestPath) => {
  * @param {MediaURLOptions} options
  */
 const createMediaURL = (options) => {
-    const { basePath, fileName, resourceType, resourceId } = options;
+    const { basePath, fileName, hash, resourceType, resourceId } = options;
 
-    const mediaPath = path.join(
-        '/',
-        basePath,
-        'media',
-        'get',
-        resourceType,
-        resourceId,
-        fileName
-    );
+    const mediaPath = path
+        .join(
+            '/',
+            basePath,
+            'media',
+            'get',
+            resourceType,
+            resourceId,
+            hash?.replace('md5:', '') ?? '',
+            fileName
+        )
+        .replace('//', '');
 
     return transformer.escapeURLPath(mediaPath);
 };
@@ -199,46 +106,59 @@ const escapeURL = (url) => {
 };
 
 /**
+ * @typedef {import('../models/survey-model').ManifestItem} ManifestItem
+ */
+
+/**
  * @param {string}
  * @param {ManifestItem[] | Record<string, string>} media
  * @param {HostURLOptions} options
  */
-const cacheMediaURLs = (resourceId, media, options) => {
-    const { basePath, deviceId } = options;
+const getMediaMap = async (resourceId, media, options) => {
+    const { basePath } = options;
     const resourceType = Array.isArray(media)
         ? ResourceType.MANIFEST
         : ResourceType.INSTANCE;
     const mediaEntries =
         resourceType === ResourceType.MANIFEST
-            ? media.map(({ filename, downloadUrl }) => [filename, downloadUrl])
-            : Object.entries(media);
+            ? media
+            : Object.entries(media).map(([filename, downloadUrl]) => ({
+                  filename,
+                  downloadUrl,
+              }));
 
     /** @type {Record<string, string>} */
     const result = {};
 
-    mediaEntries.forEach(([fileName, hostURL]) => {
-        const mediaURL = createMediaURL({
-            basePath,
-            fileName,
-            resourceType,
-            resourceId,
-        });
+    await Promise.all(
+        mediaEntries.map(({ filename, hash, downloadUrl }) => {
+            const mediaURL = createMediaURL({
+                basePath,
+                fileName: filename,
+                hash,
+                resourceType,
+                resourceId,
+            });
 
-        const cacheKey = getCacheKey(deviceId, mediaURL);
+            /**
+             * For future reference: special URL characters are escaped in jr: URLs
+             * by enketo-transformer. Those URLs are then replaced with actual media
+             * URLs by enketo-express (see `replaceMediaSources` in
+             * /public/js/src/module/media.js), by matching the file name portion of
+             * each URL to the keys in this media mapping. We perform the same
+             * escaping logic here to ensure keys match file names when they have
+             * special URL characters.
+             */
+            result[escapeFileName(filename)] = mediaURL;
 
-        mediaMapCache.set(cacheKey, escapeURL(hostURL));
-
-        /**
-         * For future reference: special URL characters are escaped in jr: URLs
-         * by enketo-transformer. Those URLs are then replaced with actual media
-         * URLs by enketo-express (currently below in `replaceMediaSources`, but
-         * we'll hopefully move the logic client-side in the near future), by
-         * matching the file name portion of each URL to the keys in this media
-         * mapping. We perform the same escaping logic here to ensure keys match
-         * file names when they have special URL characters.
-         */
-        result[escapeFileName(fileName)] = mediaURL;
-    });
+            if (resourceType === ResourceType.MANIFEST) {
+                return cacheModel.cacheManifestItem(
+                    mediaURL,
+                    escapeURL(downloadUrl)
+                );
+            }
+        })
+    );
 
     return result;
 };
@@ -291,7 +211,12 @@ const getManifest = async (enketoId, options) => {
 const getInstanceAttachments = async (instanceId) => {
     const { instanceAttachments } = await instanceModel.get({ instanceId });
 
-    return instanceAttachments;
+    return Object.fromEntries(
+        Object.entries(instanceAttachments).map(([key, value]) => [
+            escapeFileName(key),
+            escapeURL(value),
+        ])
+    );
 };
 
 /** @type {Map<string, Promise<Record<string, string> | ManifestItem[]>>} */
@@ -303,7 +228,7 @@ const rebuildMediaURLCachePromises = new Map();
  * @param {HostURLOptions} options
  */
 const rebuildMediaURLCache = async (resourceType, resourceId, options) => {
-    const promiseKey = `${resourceType}:${resourceId}:${options.deviceId}`;
+    const promiseKey = `${resourceType}:${resourceId}:${options.mediaHash}`;
 
     let promise = rebuildMediaURLCachePromises.get(promiseKey);
 
@@ -321,9 +246,11 @@ const rebuildMediaURLCache = async (resourceType, resourceId, options) => {
 
     const media = await promise;
 
-    rebuildMediaURLCachePromises.delete(promiseKey);
+    setTimeout(() => {
+        rebuildMediaURLCachePromises.delete(promiseKey);
+    });
 
-    cacheMediaURLs(resourceId, media, options);
+    getMediaMap(resourceId, media, options);
 };
 
 /**
@@ -331,98 +258,60 @@ const rebuildMediaURLCache = async (resourceType, resourceId, options) => {
  * @property {string} [auth]
  * @property {string} basePath
  * @property {string} [cookie]
- * @property {string} deviceId
+ * @property {string} [mediaHash]
  * @property {string} requestPath
  */
 
 /**
  * @param {import('express').Request} request
+ * @param {string} [mediaHash]
  * @return {HostURLOptions}
  */
-const getHostURLOptions = (request) => {
-    const { __enketo_meta_deviceid: deviceId } = request.signedCookies;
-
-    if (deviceId == null) {
-        throw new error.ResponseError(401, 'Unauthorized');
-    }
-
-    return {
-        auth: userModel.getCredentials(request),
-        basePath: request.app.get('base path') ?? '',
-        cookie: request.headers.cookie,
-        deviceId,
-        requestPath: request.url,
-    };
-};
+const getHostURLOptions = (request, mediaHash) => ({
+    auth: userModel.getCredentials(request),
+    basePath: request.app.get('base path') ?? '',
+    cookie: request.headers.cookie,
+    mediaHash,
+    requestPath: request.url,
+});
 
 /**
  * @param {HostURLOptions} options
  */
 const getHostURL = async (options) => {
-    const { basePath, deviceId, requestPath } = options;
+    const { basePath, requestPath } = options;
     const mediaURLSegments = matchMediaURLSegments(requestPath);
 
     if (mediaURLSegments == null) {
         return requestPath;
     }
 
+    const { fileName, resourceId, resourceType } = mediaURLSegments;
+
+    if (resourceType === ResourceType.INSTANCE) {
+        const instanceAttachments = await getInstanceAttachments(resourceId);
+
+        return instanceAttachments[fileName];
+    }
+
     const mediaURL = createMediaURL({
         ...mediaURLSegments,
         basePath,
     });
-    const cacheKey = getCacheKey(deviceId, mediaURL);
-    let hostURL = mediaMapCache.get(cacheKey);
+
+    let hostURL = await cacheModel.getManifestItem(mediaURL);
 
     if (hostURL == null) {
-        const { resourceId, resourceType } = mediaURLSegments;
         await rebuildMediaURLCache(resourceType, resourceId, options);
 
-        hostURL = mediaMapCache.get(cacheKey);
+        hostURL = await cacheModel.getManifestItem(mediaURL);
     }
 
     return hostURL ?? null;
 };
 
-/**
- * @param {Survey} survey
- * @return {Survey}
- */
-const replaceMediaSources = (survey) => {
-    const { media } = survey;
-
-    let { form, model } = survey;
-
-    if (media != null) {
-        const JR_URL = /"jr:\/\/[\w-]+\/([^"]+)"/g;
-        const replacer = (match, filename) => {
-            if (media[filename]) {
-                return `"${media[filename]}"`;
-            }
-
-            return match;
-        };
-
-        form = form.replace(JR_URL, replacer);
-        model = model.replace(JR_URL, replacer);
-
-        if (media['form_logo.png']) {
-            form = form.replace(
-                /(class="form-logo"\s*>)/,
-                `$1<img src="${media['form_logo.png']}" alt="form logo">`
-            );
-        }
-    }
-
-    return {
-        ...survey,
-        form,
-        model,
-    };
-};
-
 module.exports = {
-    cacheMediaURLs,
+    getMediaMap,
     getHostURLOptions,
     getHostURL,
-    replaceMediaSources,
 };

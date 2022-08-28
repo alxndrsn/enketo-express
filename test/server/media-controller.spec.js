@@ -2,13 +2,14 @@ const request = require('supertest');
 const http = require('http');
 const nock = require('nock');
 const sinon = require('sinon');
+const communicator = require('../../app/lib/communicator');
 const mediaLib = require('../../app/lib/media');
 const app = require('../../config/express');
 
 const testHTMLBody = 'im in.';
 const portHTML = 1234;
-const testHTMLURL = `http://localhost:${portHTML}`;
-const testHTMLMetaURL = `http://0.0.0.0:${portHTML}`;
+const testHTMLURL = `http://localhost:${portHTML}/`;
+const testHTMLMetaURL = `http://0.0.0.0:${portHTML}/`;
 const testHTMLValidHTTPSURL =
     'https://www.w3.org/People/mimasa/test/imgformat/img/w3c_home_2.jpg';
 const localhost = '127.0.0.1';
@@ -38,7 +39,7 @@ describe('Media controller', () => {
     /** @type {string} */
     let requestValidHTTPSURL;
 
-    /** @type {string} */
+    /** @type {string[]} */
     let mediaURLs;
 
     /** @type {http.Server} */
@@ -56,15 +57,29 @@ describe('Media controller', () => {
             requestPath: req.url,
         }));
 
-        const mediaMap = mediaLib.cacheMediaURLs(
-            enketoId,
+        const manifest = [
             {
-                'request.html': testHTMLURL,
-                'meta.html': testHTMLMetaURL,
-                'https.jpg': testHTMLValidHTTPSURL,
+                filename: 'request.html',
+                downloadUrl: testHTMLURL,
             },
+            {
+                filename: 'meta.html',
+                downloadUrl: testHTMLMetaURL,
+            },
+            {
+                filename: 'https.jpg',
+                downloadUrl: testHTMLValidHTTPSURL,
+            },
+        ];
+
+        sandbox.stub(communicator, 'getManifest').resolves({ manifest });
+
+        const mediaMap = await mediaLib.getMediaMap(
+            enketoId,
+            manifest,
             mediaLib.getHostURLOptions({
                 url: `${app.get('base path')}transform/xform/${enketoId}`,
+                headers: {},
             })
         );
 
@@ -78,7 +93,7 @@ describe('Media controller', () => {
 
         nock(origin)
             .get(pathname)
-            .reply(200, { hostURL: requestValidHTTPSURL });
+            .reply(200, { hostURL: testHTMLValidHTTPSURL });
 
         server = http.createServer((req, res) => {
             res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -127,8 +142,6 @@ describe('Media controller', () => {
     });
 
     it('requests the URL in a cached media map', async () => {
-        nock.cleanAll();
-
         for await (const [index, mediaURL] of mediaURLs.entries()) {
             const hostURL = hostURLs[index];
             const { origin, pathname } = new URL(hostURL);
