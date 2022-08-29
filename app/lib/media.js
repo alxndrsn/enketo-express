@@ -1,7 +1,7 @@
 /* eslint-disable max-classes-per-file */
 
 const transformer = require('enketo-transformer');
-const path = require('path/posix');
+const path = require('path').posix;
 const cacheModel = require('../models/cache-model');
 const instanceModel = require('../models/instance-model');
 const surveyModel = require('../models/survey-model');
