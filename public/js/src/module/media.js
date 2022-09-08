@@ -1,8 +1,14 @@
 /**
+ * @typedef ReplaceMediaOptions
+ * @property {boolean} isOffline
+ */
+
+/**
  * @param {Element} rootElement
  * @param {Record<string, string>} [media]
+ * @param {ReplaceMediaOptions} [options]
  */
-export const replaceMediaSources = (rootElement, media = {}) => {
+export const replaceMediaSources = (rootElement, media = {}, options = {}) => {
     const sourceElements = rootElement.querySelectorAll(
         '[src^="jr:"], [data-offline-src^="jr:"]'
     );
@@ -36,7 +42,11 @@ export const replaceMediaSources = (rootElement, media = {}) => {
             if (formLogoContainer.firstElementChild == null) {
                 const formLogoImg = document.createElement('img');
 
-                formLogoImg.src = formLogoURL;
+                if (options.isOffline) {
+                    formLogoImg.dataset.offlineSrc = formLogoURL;
+                } else {
+                    formLogoImg.src = formLogoURL;
+                }
                 formLogoImg.alt = 'form logo';
 
                 formLogoContainer.append(formLogoImg);

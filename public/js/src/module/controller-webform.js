@@ -62,7 +62,9 @@ function init(formEl, data, loadErrors = []) {
         ...data.instanceAttachments,
     };
 
-    replaceMediaSources(formEl, media);
+    replaceMediaSources(formEl, media, {
+        isOffline: settings.offline,
+    });
 
     formData = data;
 

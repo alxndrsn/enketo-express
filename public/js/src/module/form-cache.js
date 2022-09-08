@@ -309,7 +309,9 @@ function updateMaxSubmissionSize(survey) {
 function updateMedia(survey) {
     const formElement = document.querySelector('form.or');
 
-    replaceMediaSources(formElement, survey.media);
+    replaceMediaSources(formElement, survey.media, {
+        isOffline: true,
+    });
 
     const containers = [formElement];
     const formHeader = document.querySelector('.form-header');
