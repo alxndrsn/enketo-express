@@ -283,7 +283,7 @@ const getHostURL = async (options) => {
     const mediaURLSegments = matchMediaURLSegments(requestPath);
 
     if (mediaURLSegments == null) {
-        return requestPath;
+        return;
     }
 
     const { fileName, resourceId, resourceType } = mediaURLSegments;

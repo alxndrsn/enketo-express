@@ -171,7 +171,7 @@ describe('Media controller', () => {
                 500,
                 /DNS lookup .* is not allowed. Because, It is private IP address/
             )
-            .end(done, done);
+            .end(done);
     });
     it('for a private IP address WITH a Referer with allowPrivateIPAddress=false and allowMetaIPAddress=true', (done) => {
         // Only change one setting
@@ -191,7 +191,7 @@ describe('Media controller', () => {
                 500,
                 /DNS lookup .* is not allowed. Because, It is private IP address/
             )
-            .end(done, done);
+            .end(done);
     });
     it('for a private IP address WITH a Referer with allowPrivateIPAddress=false but allowIPAddressList=[`127.0.0.1`]', (done) => {
         // Only change one setting
@@ -208,7 +208,7 @@ describe('Media controller', () => {
             .get(requestURL)
             .set('Referer', 'https://google.com?print=true')
             .expect(200, testHTMLBody)
-            .end(done, done);
+            .end(done);
     });
     it('for a private IP address WITH a Referer with allowPrivateIPAddress=false and denyIPAddressList=[`127.0.0.1`]', (done) => {
         // Only change one setting
@@ -228,7 +228,7 @@ describe('Media controller', () => {
                 500,
                 /DNS lookup .* is not allowed. Because, It is private IP address/
             )
-            .end(done, done);
+            .end(done);
     });
 
     // Tests with allowPrivateIPAddress TRUE
@@ -247,7 +247,7 @@ describe('Media controller', () => {
             .get(requestURL)
             .set('Referer', 'https://google.com?print=true')
             .expect(200, testHTMLBody)
-            .end(done, done);
+            .end(done);
     });
     it('for a private IP address WITH a Referer with allowPrivateIPAddress=true and allowMetaIPAddress=true', (done) => {
         // Change two settings
@@ -265,7 +265,7 @@ describe('Media controller', () => {
             .get(requestMetaURL)
             .set('Referer', 'https://google.com?print=true')
             .expect(200, testHTMLBody)
-            .end(done, done);
+            .end(done);
     });
     it('for a private IP address WITH a Referer with allowPrivateIPAddress=true and allowIPAddressList=[`127.0.0.1`]', (done) => {
         // Change two settings
@@ -283,7 +283,7 @@ describe('Media controller', () => {
             .get(requestURL)
             .set('Referer', 'https://google.com?print=true')
             .expect(200, testHTMLBody)
-            .end(done, done);
+            .end(done);
     });
     it('for a private IP address WITH a Referer with allowPrivateIPAddress=true and denyIPAddressList=[`127.0.0.1`]', (done) => {
         // Change two settings
@@ -304,7 +304,7 @@ describe('Media controller', () => {
                 500,
                 /DNS lookup .* is not allowed. Because It is defined in denyIPAddressList./
             )
-            .end(done, done);
+            .end(done);
     });
 
     // Tests WITHOUT Referers
@@ -325,7 +325,7 @@ describe('Media controller', () => {
                 500,
                 /DNS lookup .* is not allowed. Because, It is private IP address./
             )
-            .end(done, done);
+            .end(done);
     });
     it('for a private IP address WITHOUT a Referer with allowPrivateIPAddress=false and allowMetaIPAddress=true', (done) => {
         // Only change one setting
@@ -344,7 +344,7 @@ describe('Media controller', () => {
                 500,
                 /DNS lookup .* is not allowed. Because, It is private IP address/
             )
-            .end(done, done);
+            .end(done);
     });
     it('for a private IP address WITHOUT a Referer with allowPrivateIPAddress=false but allowIPAddressList=[`127.0.0.1`]', (done) => {
         // Only change one setting
@@ -357,7 +357,7 @@ describe('Media controller', () => {
             denyIPAddressList,
         });
 
-        request(app).get(requestURL).expect(200, testHTMLBody).end(done, done);
+        request(app).get(requestURL).expect(200, testHTMLBody).end(done);
     });
     it('for a private IP address WITHOUT a Referer with allowPrivateIPAddress=false and denyIPAddressList=[`127.0.0.1`]', (done) => {
         // Only change one setting
@@ -376,7 +376,7 @@ describe('Media controller', () => {
                 500,
                 /DNS lookup .* is not allowed. Because, It is private IP address/
             )
-            .end(done, done);
+            .end(done);
     });
 
     // Tests with allowPrivateIPAddress TRUE
@@ -391,7 +391,7 @@ describe('Media controller', () => {
             denyIPAddressList,
         });
 
-        request(app).get(requestURL).expect(200, testHTMLBody).end(done, done);
+        request(app).get(requestURL).expect(200, testHTMLBody).end(done);
     });
     it('for a private IP address WITHOUT a Referer with allowPrivateIPAddress=true and allowMetaIPAddress=true', (done) => {
         // Change two settings
@@ -405,10 +405,7 @@ describe('Media controller', () => {
             denyIPAddressList,
         });
 
-        request(app)
-            .get(requestMetaURL)
-            .expect(200, testHTMLBody)
-            .end(done, done);
+        request(app).get(requestMetaURL).expect(200, testHTMLBody).end(done);
     });
     it('for a private IP address WITHOUT a Referer with allowPrivateIPAddress=true and allowIPAddressList=[`127.0.0.1`]', (done) => {
         // Change two settings
@@ -422,7 +419,7 @@ describe('Media controller', () => {
             denyIPAddressList,
         });
 
-        request(app).get(requestURL).expect(200, testHTMLBody).end(done, done);
+        request(app).get(requestURL).expect(200, testHTMLBody).end(done);
     });
     it('for a private IP address WITHOUT a Referer with allowPrivateIPAddress=true and denyIPAddressList=[`127.0.0.1`]', (done) => {
         // Change two settings
@@ -442,7 +439,7 @@ describe('Media controller', () => {
                 500,
                 /DNS lookup .* is not allowed. Because It is defined in denyIPAddressList./
             )
-            .end(done, done);
+            .end(done);
     });
 
     // Testing valid https resource
@@ -455,6 +452,6 @@ describe('Media controller', () => {
             denyIPAddressList,
         });
 
-        request(app).get(requestValidHTTPSURL).expect(200).end(done, done);
+        request(app).get(requestValidHTTPSURL).expect(200).end(done);
     });
 });
