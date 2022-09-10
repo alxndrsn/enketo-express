@@ -37,71 +37,67 @@ function _isPrintView(req) {
  * @param {Function} next - Express callback
  */
 async function getMedia(req, res, next) {
-    try {
-        const hostURLOptions = mediaLib.getHostURLOptions(req);
-        const url = await mediaLib.getHostURL(hostURLOptions);
+    const hostURLOptions = mediaLib.getHostURLOptions(req);
+    const url = await mediaLib.getHostURL(hostURLOptions);
 
-        if (url == null) {
-            const error = new ResponseError(404, 'Not found');
+    if (url == null) {
+        const error = new ResponseError(404, 'Not found');
 
-            next(error);
-            return;
-        }
-
-        const { auth, cookie } = hostURLOptions;
-
-        // TODO: while beginning to work on consolidating media logic,
-        // it was also discovered that partial content is not handled
-        // correctly when content is streamed through a proxy with
-        // incomplete configuration. Discovered during dev with the
-        // default ODK Central configuration.
-        //
-        // For example, this presents as being unable to seek <audio>
-        // in Chrome.
-        const options = communicator.getUpdatedRequestOptions({
-            url,
-            auth,
-            headers: {
-                cookie,
-            },
-        });
-
-        // due to a bug in request/request using options.method with Digest Auth we won't pass method as an option
-        delete options.method;
-
-        // filtering agent to stop private ip access to HEAD and GET
-        if (options.url.startsWith('https')) {
-            options.agent = new RequestFilteringHttpsAgent(
-                req.app.get('ip filtering')
-            );
-        } else {
-            options.agent = new RequestFilteringHttpAgent(
-                req.app.get('ip filtering')
-            );
-        }
-
-        if (_isPrintView(req)) {
-            request.head(options, (error, response) => {
-                if (error) {
-                    next(error);
-                } else {
-                    const contentType = response.headers['content-type'];
-                    if (
-                        contentType.startsWith('audio') ||
-                        contentType.startsWith('video')
-                    ) {
-                        // Empty response, because audio and video is not helpful in print views.
-                        res.status(204).end();
-                    } else {
-                        _pipeMedia(options, req, res, next);
-                    }
-                }
-            });
-        } else {
-            _pipeMedia(options, req, res, next);
-        }
-    } catch (error) {
         next(error);
+        return;
+    }
+
+    const { auth, cookie } = hostURLOptions;
+
+    // TODO: while beginning to work on consolidating media logic,
+    // it was also discovered that partial content is not handled
+    // correctly when content is streamed through a proxy with
+    // incomplete configuration. Discovered during dev with the
+    // default ODK Central configuration.
+    //
+    // For example, this presents as being unable to seek <audio>
+    // in Chrome.
+    const options = communicator.getUpdatedRequestOptions({
+        url,
+        auth,
+        headers: {
+            cookie,
+        },
+    });
+
+    // due to a bug in request/request using options.method with Digest Auth we won't pass method as an option
+    delete options.method;
+
+    // filtering agent to stop private ip access to HEAD and GET
+    if (options.url.startsWith('https')) {
+        options.agent = new RequestFilteringHttpsAgent(
+            req.app.get('ip filtering')
+        );
+    } else {
+        options.agent = new RequestFilteringHttpAgent(
+            req.app.get('ip filtering')
+        );
+    }
+
+    if (_isPrintView(req)) {
+        request.head(options, (error, response) => {
+            if (error) {
+                next(error);
+            } else {
+                const contentType = response.headers['content-type'];
+                if (
+                    contentType.startsWith('audio') ||
+                    contentType.startsWith('video')
+                ) {
+                    // Empty response, because audio and video is not helpful in print views.
+                    res.status(204).end();
+                } else {
+                    _pipeMedia(options, req, res, next);
+                }
+            }
+        });
+    } else {
+        _pipeMedia(options, req, res, next);
     }
 }
 
