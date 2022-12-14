@@ -13,3 +13,7 @@
 !/public/
 !/scripts/
 !/setup/docker/
+
+# Include so that .tag.txt can be generated
+# TODO generate this file at build-time?
+!/.git/
